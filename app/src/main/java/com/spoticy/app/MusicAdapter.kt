@@ -8,10 +8,11 @@ import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 
 class MusicAdapter(
-    private val musicList: List<Music>, // Utilisation directe de la data class Music
+    private val originalList: List<Music>, // Utilisation directe de la data class Music
     private val onItemClick: (Int) -> Unit
 ) : RecyclerView.Adapter<MusicAdapter.MusicViewHolder>() {
 
+    private var filteredList: List<Music> = originalList
     var playingPosition: Int = -1
 
     inner class MusicViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -31,8 +32,10 @@ class MusicAdapter(
         return MusicViewHolder(view)
     }
 
+    override fun getItemCount(): Int = filteredList.size
+
     override fun onBindViewHolder(holder: MusicViewHolder, position: Int) {
-        val music = musicList[position]
+        val music = filteredList[position]
         holder.titleTextView.text = music.title
 
         holder.titleTextView.setTextColor(
@@ -44,5 +47,14 @@ class MusicAdapter(
         holder.dateTextView.text = date
     }
 
-    override fun getItemCount(): Int = musicList.size
+    fun filter(query: String) {
+        filteredList = if (query.isEmpty()) {
+            originalList
+        } else {
+            originalList.filter { it.title.contains(query, ignoreCase = true) }
+        }
+        notifyDataSetChanged()
+    }
+
+    fun getMusicAt(position: Int): Music = filteredList[position]
 }

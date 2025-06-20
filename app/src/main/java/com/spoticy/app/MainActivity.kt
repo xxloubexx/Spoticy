@@ -17,6 +17,9 @@ import androidx.core.content.edit
 import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.support.v4.media.MediaMetadataCompat
+import android.text.Editable
+import android.text.TextWatcher
+import android.widget.EditText
 
 class MainActivity : AppCompatActivity() {
 
@@ -34,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var seekBar: SeekBar
     private lateinit var currentTime: TextView
     private lateinit var duration: TextView
+    private lateinit var searchBar: EditText
 
     private var musicList = mutableListOf<Music>()
     private var currentPosition = 0
@@ -94,11 +98,24 @@ class MainActivity : AppCompatActivity() {
         seekBar = findViewById(R.id.seekBar)
         currentTime = findViewById(R.id.currentTime)
         duration = findViewById(R.id.duration)
+        searchBar = findViewById(R.id.searchBar)
 
         // Adapter et RecyclerView
-        musicAdapter = MusicAdapter(musicList) { position -> playMusic(position) }
+        musicAdapter = MusicAdapter(musicList) { position ->
+            val music = musicAdapter.getMusicAt(position)
+            val realPosition = musicList.indexOf(music)
+            playMusic(realPosition)
+        }
         musicRecyclerView.layoutManager = LinearLayoutManager(this)
         musicRecyclerView.adapter = musicAdapter
+
+        searchBar.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) {
+                musicAdapter.filter(s.toString())
+            }
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+        })
 
         // Désactive les contrôles au démarrage
         setControlsEnabled(false)
