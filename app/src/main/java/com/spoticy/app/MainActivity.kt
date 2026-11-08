@@ -188,6 +188,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
+        val lastMusicUri = prefs.getString(keyLastMusicUri, null)
+        autoPlayOnServiceConnect = savedInstanceState == null && lastMusicUri != null
         val folderUriString = prefs.getString(keyFolderURI, null)
 
         if (folderUriString != null) {

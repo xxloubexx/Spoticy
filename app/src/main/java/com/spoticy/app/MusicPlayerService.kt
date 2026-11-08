@@ -511,10 +511,8 @@ class MusicPlayerService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        // La musique continue quand l'utilisateur quitte la tâche, sauf si elle est en pause.
-        if (!isPlaying()) {
-            stop()
-        }
+        // Balayer l'application des récents doit arrêter complètement la lecture.
+        stop()
     }
 
     override fun onUnbind(intent: Intent?): Boolean {

@@ -5,4 +5,5 @@
     <color name="accent_green">#1DB954</color>
     <color name="text_primary">#FFFFFF</color>
     <color name="text_secondary">#AAAAAA</color>
+    <color name="ic_launcher_background">#000000</color>
 </resources>

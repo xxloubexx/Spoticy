@@ -10,10 +10,10 @@
 - Liste des fichiers `.mp3` et `.wav` du dossier (extensions insensibles à la casse), triés du plus récent au plus ancien.
 - Recherche par nom de fichier, avec surlignage fiable du morceau en cours même quand la liste est filtrée.
 - Lecture, pause, morceau suivant / précédent et déplacement dans la piste.
-- Lecture en arrière-plan : la musique continue quand l'activité est détruite (rotation, bouton Retour) ou quand la tâche est balayée des applications récentes, tant qu'un morceau joue.
+- Lecture en arrière-plan : la musique continue quand l'activité est détruite (rotation, bouton Retour), mais un balayage des applications récentes arrête complètement la lecture.
 - Notification de lecture avec contrôles précédent / lecture-pause / suivant / arrêt, et intégration à l'écran verrouillé via `MediaSession` (si la permission de notifications est accordée).
 - Gestion du focus audio : pause lors d'un appel ou d'une autre application, reprise ensuite.
-- Relance automatique du dernier morceau mémorisé au lancement.
+- Relance le dernier morceau écouté depuis le début au prochain lancement.
 - Pause / reprise automatique à la connexion ou déconnexion d'un périphérique audio Bluetooth (A2DP ou casque), si la permission Bluetooth est accordée.
 - Interface sombre, disponible en français et en anglais.
 
@@ -106,7 +106,7 @@ L'activité ne possède plus la `MediaSession` : elle survit donc à la destruct
 - Aucune métadonnée (artiste, album, pochette) : le nom du fichier sert de titre.
 - Pas encore de file de lecture éditable, de répétition, de lecture aléatoire ni de tri configurable.
 - Le scan du dossier s'exécute sur le thread principal : un dossier très volumineux peut bloquer brièvement l'interface.
-- La lecture continue en arrière-plan, mais l'application n'utilise pas encore Media3 ; les API `MediaSessionCompat` sont dépréciées et émettent des avertissements de compilation.
+- La lecture continue en arrière-plan (hors balayage de la tâche), mais l'application n'utilise pas encore Media3 ; les API `MediaSessionCompat` sont dépréciées et émettent des avertissements de compilation.
 - La reprise Bluetooth se déclenche pour toute connexion A2DP ou casque, sans distinction du périphérique.
 - Les tests automatisés restent limités au formatage des durées ; il n'y a pas encore de tests instrumentés ni de CI.
 
@@ -139,6 +139,7 @@ Spoticy ne dispose d'aucune permission réseau et n'envoie aucune donnée. L'app
 
 ## Historique
 
+- **6.3** (08/11/2026) — arrêt complet de la lecture au balayage de la tâche, reprise du dernier morceau depuis le début au lancement, icône de lancement en note de musique.
 - **6.2** (08/11/2026) — lecture en arrière-plan, file de lecture et `MediaSession` dans le service, commandes de notification, permissions runtime, `minSdk` abaissé à 26, thème sombre cohérent, interface FR/EN, tests unitaires et licence MIT.
 - **6.1** (19/02/2026) — pause/reprise Bluetooth et gestion du focus audio.
 - **Recherche** (20/06/2025) — ajout de la barre de recherche.
