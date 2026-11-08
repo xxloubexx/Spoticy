@@ -35,6 +35,7 @@ class MusicPlayerService : Service() {
         const val ACTION_CMD_NEXT = "com.spoticy.app.CMD_NEXT"
         const val ACTION_CMD_PREV = "com.spoticy.app.CMD_PREV"
         const val ACTION_CMD_STOP = "com.spoticy.app.CMD_STOP"
+        const val ACTION_CMD_RESTORE_NOTIFICATION = "com.spoticy.app.CMD_RESTORE_NOTIFICATION"
 
         private const val PREFS_NAME = "MusicPrefs"
         private const val KEY_LAST_MUSIC_URI = "lastMusicUri"
@@ -146,6 +147,7 @@ class MusicPlayerService : Service() {
             ACTION_CMD_NEXT -> next()
             ACTION_CMD_PREV -> previous()
             ACTION_CMD_STOP -> stop()
+            ACTION_CMD_RESTORE_NOTIFICATION -> ensureForeground()
         }
         return START_NOT_STICKY
     }
@@ -446,12 +448,12 @@ class MusicPlayerService : Service() {
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(contentPendingIntent())
-            .setDeleteIntent(servicePendingIntent(ACTION_CMD_STOP, 5))
+            .setDeleteIntent(servicePendingIntent(ACTION_CMD_RESTORE_NOTIFICATION, 5))
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
-            .setOngoing(playing)
+            .setOngoing(true)
             .addAction(
                 R.drawable.ic_skip_previous,
                 getString(R.string.notification_previous),

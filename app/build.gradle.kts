@@ -11,8 +11,8 @@ android {
         applicationId = "com.spoticy.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "6.3"
+        versionCode = 11
+        versionName = "6.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

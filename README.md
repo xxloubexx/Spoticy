@@ -11,7 +11,7 @@
 - Recherche par nom de fichier, avec surlignage fiable du morceau en cours même quand la liste est filtrée.
 - Lecture, pause, morceau suivant / précédent et déplacement dans la piste.
 - Lecture en arrière-plan : la musique continue quand l'activité est détruite (rotation, bouton Retour), mais un balayage des applications récentes arrête complètement la lecture.
-- Notification de lecture avec contrôles précédent / lecture-pause / suivant / arrêt, et intégration à l'écran verrouillé via `MediaSession` (si la permission de notifications est accordée).
+- Notification de lecture avec contrôles précédent / lecture-pause / suivant / arrêt, intégration à l'écran verrouillé via `MediaSession` (si la permission de notifications est accordée), et affichage permanent non balayable tant que le service de lecture tourne.
 - Gestion du focus audio : pause lors d'un appel ou d'une autre application, reprise ensuite.
 - Relance le dernier morceau écouté depuis le début au prochain lancement.
 - Pause / reprise automatique à la connexion ou déconnexion d'un périphérique audio Bluetooth (A2DP ou casque), si la permission Bluetooth est accordée.
@@ -139,6 +139,7 @@ Spoticy ne dispose d'aucune permission réseau et n'envoie aucune donnée. L'app
 
 ## Historique
 
+- **6.4** (08/11/2026) — notification de lecture persistante, non balayable tant que le service tourne.
 - **6.3** (08/11/2026) — arrêt complet de la lecture au balayage de la tâche, reprise du dernier morceau depuis le début au lancement, icône de lancement en note de musique.
 - **6.2** (08/11/2026) — lecture en arrière-plan, file de lecture et `MediaSession` dans le service, commandes de notification, permissions runtime, `minSdk` abaissé à 26, thème sombre cohérent, interface FR/EN, tests unitaires et licence MIT.
 - **6.1** (19/02/2026) — pause/reprise Bluetooth et gestion du focus audio.
