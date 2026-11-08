@@ -4,6 +4,10 @@
 
 > Projet personnel indépendant, sans lien avec Spotify.
 
+[![Android CI](https://github.com/xxloubexx/Spoticy/actions/workflows/android-ci.yml/badge.svg?branch=main)](https://github.com/xxloubexx/Spoticy/actions/workflows/android-ci.yml)
+
+Version actuelle : **7.0** (`versionCode 12`).
+
 ## Fonctionnalités
 
 - Sélection d'un dossier via le Stockage Access Framework (SAF), avec conservation de l'accès après redémarrage.
@@ -55,7 +59,21 @@ En ligne de commande, Gradle doit connaître l'emplacement du SDK Android : déf
 .\gradlew.bat :app:lintDebug
 ```
 
-Les tests couvrent le formatage des durées (`formatTime`). Android Lint doit rester à **0 erreur** ; les avertissements restants concernent uniquement des versions de dépendances plus récentes.
+Les tests couvrent le formatage des durées (`formatTime`). Android Lint doit rester à **0 erreur** ; les avertissements restants concernent uniquement des versions de dépendances plus récentes. Ces vérifications sont exécutées automatiquement par la CI.
+
+## CI/CD
+
+Deux workflows GitHub Actions sont définis dans `.github/workflows/` :
+
+- **Android CI** (`android-ci.yml`) : à chaque push sur `main` et à chaque pull request, il valide le wrapper Gradle, exécute les tests unitaires, Android Lint et la compilation de l'APK debug. Les rapports et l'APK sont publiés comme artefacts.
+- **Android Release** (`android-release.yml`) : lors de la création d'un tag `v*`, il reconstruit l'APK et crée une GitHub Release. L'APK est actuellement signé avec la clé de debug ; une configuration de signature release devra être ajoutée avant une publication sur le Play Store.
+
+Pour créer une release :
+
+```bash
+git tag v7.0
+git push origin v7.0
+```
 
 ## Utilisation
 
@@ -64,7 +82,7 @@ Les tests couvrent le formatage des durées (`formatTime`). Android Lint doit re
 3. Appuyez sur un morceau pour le lire.
 4. Utilisez la barre de recherche pour filtrer la liste.
 5. Les contrôles en bas de l'écran permettent de mettre en pause, de changer de morceau et de se déplacer dans la piste.
-6. La notification et l'écran verrouillé proposent les mêmes commandes lorsque la lecture est active.
+6. La notification reste disponible tant que le service de lecture tourne ; l'écran verrouillé propose les mêmes commandes lorsque la lecture est active.
 
 Seuls les fichiers situés **à la racine** du dossier sont listés, et seules les extensions `.mp3` et `.wav` sont reconnues.
 
@@ -95,7 +113,7 @@ L'activité ne possède plus la `MediaSession` : elle survit donc à la destruct
 ## Permissions
 
 - `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` : service de lecture au premier plan.
-- `POST_NOTIFICATIONS` : notification de lecture sur Android 13+. Demandée au runtime lors de la sélection du dossier.
+- `POST_NOTIFICATIONS` : notification de lecture sur Android 13+. Demandée au runtime au démarrage ou lors de la sélection du dossier.
 - `BLUETOOTH` (API 30 et moins), `BLUETOOTH_CONNECT` : événements Bluetooth. `BLUETOOTH_CONNECT` est demandée au runtime sur Android 12+.
 - L'accès aux fichiers passe uniquement par le SAF : aucune permission de stockage large n'est demandée.
 
@@ -108,7 +126,7 @@ L'activité ne possède plus la `MediaSession` : elle survit donc à la destruct
 - Le scan du dossier s'exécute sur le thread principal : un dossier très volumineux peut bloquer brièvement l'interface.
 - La lecture continue en arrière-plan (hors balayage de la tâche), mais l'application n'utilise pas encore Media3 ; les API `MediaSessionCompat` sont dépréciées et émettent des avertissements de compilation.
 - La reprise Bluetooth se déclenche pour toute connexion A2DP ou casque, sans distinction du périphérique.
-- Les tests automatisés restent limités au formatage des durées ; il n'y a pas encore de tests instrumentés ni de CI.
+- Les tests automatisés restent limités au formatage des durées ; il n'y a pas encore de tests instrumentés.
 
 ## Pistes d'amélioration
 
@@ -130,7 +148,7 @@ L'activité ne possède plus la `MediaSession` : elle survit donc à la destruct
 
 - Déplacer le scan du dossier hors du thread principal avec des coroutines et un `ViewModel`.
 - Ajouter des tests unitaires sur le filtrage et la file de lecture, puis des tests instrumentés.
-- Mettre en place une CI GitHub Actions pour compiler, tester et lancer Lint à chaque push.
+- Ajouter des tests instrumentés sur émulateur dans la CI.
 - Préparer une configuration de signature pour les builds de release.
 
 ## Vie privée
@@ -139,6 +157,7 @@ Spoticy ne dispose d'aucune permission réseau et n'envoie aucune donnée. L'app
 
 ## Historique
 
+- **7.0** (08/11/2026) — version publiée sur GitHub avec CI/CD, tests unitaires, Lint et build automatique.
 - **6.4** (08/11/2026) — notification de lecture persistante, non balayable tant que le service tourne.
 - **6.3** (08/11/2026) — arrêt complet de la lecture au balayage de la tâche, reprise du dernier morceau depuis le début au lancement, icône de lancement en note de musique.
 - **6.2** (08/11/2026) — lecture en arrière-plan, file de lecture et `MediaSession` dans le service, commandes de notification, permissions runtime, `minSdk` abaissé à 26, thème sombre cohérent, interface FR/EN, tests unitaires et licence MIT.
