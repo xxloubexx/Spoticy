@@ -9,10 +9,10 @@ android {
 
     defaultConfig {
         applicationId = "com.spoticy.app"
-        minSdk = 35
+        minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "6.1"
+        versionCode = 9
+        versionName = "6.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -41,8 +41,9 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
-    implementation("androidx.media:media:1.7.0")
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.documentfile)
+    implementation(libs.androidx.media)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

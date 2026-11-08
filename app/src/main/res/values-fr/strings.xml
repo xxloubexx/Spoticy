@@ -1,0 +1,27 @@
+<resources>
+    <string name="app_name">Spoticy</string>
+    <string name="select_folder">Choisir un dossier</string>
+    <string name="search_hint">Rechercher…</string>
+    <string name="no_track_selected">Aucun morceau sélectionné</string>
+    <string name="no_folder_selected">Aucun dossier sélectionné</string>
+    <string name="no_music_found">Aucun morceau trouvé</string>
+    <string name="select_track">Sélectionnez un morceau</string>
+    <string name="previous">Précédent</string>
+    <string name="play_pause">Lecture/Pause</string>
+    <string name="next">Suivant</string>
+    <string name="time_zero">00:00</string>
+    <string name="folder_access_error">Impossible d\'accéder au dossier. Sélectionnez-le à nouveau.</string>
+    <string name="select_folder_first">Sélectionnez un dossier pour commencer.</string>
+    <string name="playback_error">Impossible de lire ce morceau : %1$s</string>
+    <string name="service_start_error">Impossible de démarrer le lecteur.</string>
+    <string name="notification_channel_name">Lecture Spoticy</string>
+    <string name="notification_channel_description">Notification de lecture</string>
+    <string name="notification_ready">Prêt à jouer</string>
+    <string name="notification_playing">Lecture en cours</string>
+    <string name="notification_paused">En pause</string>
+    <string name="notification_previous">Précédent</string>
+    <string name="notification_play">Lecture</string>
+    <string name="notification_pause">Pause</string>
+    <string name="notification_next">Suivant</string>
+    <string name="notification_stop">Arrêter</string>
+</resources>

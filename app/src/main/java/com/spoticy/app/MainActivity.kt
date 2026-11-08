@@ -1,32 +1,40 @@
 package com.spoticy.app
 
+import android.Manifest
 import android.annotation.SuppressLint
-import android.app.PendingIntent
-import android.content.*
-import android.media.MediaPlayer
+import android.content.ComponentName
+import android.content.Intent
+import android.content.ServiceConnection
+import android.content.pm.PackageManager
 import android.net.Uri
-import android.os.*
-import android.widget.*
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.text.Editable
+import android.text.TextWatcher
+import android.widget.Button
+import android.widget.EditText
+import android.widget.ImageButton
+import android.widget.SeekBar
+import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import androidx.core.net.toUri
-import androidx.core.content.edit
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
-import android.support.v4.media.MediaMetadataCompat
-import android.text.Editable
-import android.text.TextWatcher
-import android.widget.EditText
 
+@SuppressLint("NotifyDataSetChanged")
 class MainActivity : AppCompatActivity() {
 
-    private val prefsName  = "MusicPrefs"
+    private val prefsName = "MusicPrefs"
     private val keyFolderURI = "folderUri"
-    private val keyPosition = "currentPosition"
-    private val keyLastMusicUri = "lastMusicUri" // Ajoute cette ligne
+    private val keyLastMusicUri = "lastMusicUri"
 
     private lateinit var selectFolderBtn: Button
     private lateinit var musicRecyclerView: RecyclerView
@@ -41,54 +49,95 @@ class MainActivity : AppCompatActivity() {
 
     private var musicList = mutableListOf<Music>()
     private var currentPosition = 0
+    private var isSeeking = false
+    private var autoPlayOnServiceConnect = true
 
     private lateinit var musicAdapter: MusicAdapter
-
     private val handler = Handler(Looper.getMainLooper())
-
-    private lateinit var mediaSession: MediaSessionCompat
 
     private var musicService: MusicPlayerService? = null
     private var isServiceBound = false
+    private var serviceRequested = false
+
+    private var permissionRequestInFlight = false
+    private var pendingAfterPermissions: (() -> Unit)? = null
+
+    private val seekBarUpdater = object : Runnable {
+        override fun run() {
+            val service = musicService
+            if (service != null && !isSeeking) {
+                seekBar.progress = service.position()
+                currentTime.text = formatTime(service.position())
+            }
+            if (service?.isPlaying() == true) {
+                handler.postDelayed(this, 1000)
+            }
+        }
+    }
+
+    private val permissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) {
+        permissionRequestInFlight = false
+        val action = pendingAfterPermissions
+        pendingAfterPermissions = null
+        action?.invoke()
+    }
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             val binder = service as MusicPlayerService.MusicBinder
             musicService = binder.getService()
             isServiceBound = true
-            // Active les boutons ici
-            setControlsEnabled(true)
-            // Relance la musique si besoin
-            if (musicList.isNotEmpty()) {
-                playMusic(currentPosition, auto = true)
-            }
+            serviceRequested = true
+            attachServiceCallbacks()
+            musicService?.setPlaylist(musicList, currentPosition, autoPlayOnServiceConnect)
+            autoPlayOnServiceConnect = false
+            syncUiFromService()
+            setControlsEnabled(musicList.isNotEmpty())
         }
+
         override fun onServiceDisconnected(name: ComponentName?) {
-            isServiceBound = false
+            detachServiceCallbacks()
             musicService = null
+            isServiceBound = false
+            serviceRequested = false
             setControlsEnabled(false)
         }
     }
 
-    private val pickFolderLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
-        if (uri != null) {
+    private val pickFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri == null) return@registerForActivityResult
+
+            autoPlayOnServiceConnect = false
             val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
-            prefs.edit().putString(keyFolderURI, uri.toString()).apply()
-            contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION
-            )
+            prefs.edit { putString(keyFolderURI, uri.toString()) }
+
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                Toast.makeText(this, R.string.folder_access_error, Toast.LENGTH_LONG).show()
+                return@registerForActivityResult
+            }
+
             loadMusicFromUri(uri)
-            if (isServiceBound) setControlsEnabled(true)
-            trackTitle.text = "Sélectionnez un morceau"
+            trackTitle.text = getString(
+                if (musicList.isEmpty()) R.string.no_music_found else R.string.select_track
+            )
+
+            withRuntimePermissions {
+                if (musicList.isNotEmpty()) startAndBindService()
+            }
         }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Initialisation des vues
         selectFolderBtn = findViewById(R.id.selectFolderBtn)
         musicRecyclerView = findViewById(R.id.musicRecyclerView)
         playPauseBtn = findViewById(R.id.playPauseBtn)
@@ -100,11 +149,12 @@ class MainActivity : AppCompatActivity() {
         duration = findViewById(R.id.duration)
         searchBar = findViewById(R.id.searchBar)
 
-        // Adapter et RecyclerView
         musicAdapter = MusicAdapter(musicList) { position ->
             val music = musicAdapter.getMusicAt(position)
             val realPosition = musicList.indexOf(music)
-            playMusic(realPosition)
+            if (realPosition >= 0 && isServiceBound) {
+                musicService?.playIndex(realPosition)
+            }
         }
         musicRecyclerView.layoutManager = LinearLayoutManager(this)
         musicRecyclerView.adapter = musicAdapter
@@ -113,42 +163,32 @@ class MainActivity : AppCompatActivity() {
             override fun afterTextChanged(s: Editable?) {
                 musicAdapter.filter(s.toString())
             }
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+
+            override fun beforeTextChanged(
+                s: CharSequence?,
+                start: Int,
+                count: Int,
+                after: Int
+            ) {
+            }
+
+            override fun onTextChanged(
+                s: CharSequence?,
+                start: Int,
+                before: Int,
+                count: Int
+            ) {
+            }
         })
 
-        // Désactive les contrôles au démarrage
         setControlsEnabled(false)
 
-        // MediaSession : doit être initialisé AVANT toute lecture
-        mediaSession = MediaSessionCompat(this, "SpoticySession").apply {
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() { playPauseBtn.performClick() }
-                override fun onPause() { playPauseBtn.performClick() }
-                override fun onSkipToNext() { nextBtn.performClick() }
-                override fun onSkipToPrevious() { prevBtn.performClick() }
-            })
-            setMediaButtonReceiver(
-                PendingIntent.getBroadcast(
-                    this@MainActivity,
-                    0,
-                    Intent(Intent.ACTION_MEDIA_BUTTON),
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                )
-            )
-            isActive = true
-        }
-        updatePlaybackState(false)
-
-        // Bouton de sélection de dossier
         selectFolderBtn.setOnClickListener {
             pickFolderLauncher.launch(null)
         }
 
-        // Gestion du dossier et de la position
         val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
         val folderUriString = prefs.getString(keyFolderURI, null)
-        currentPosition = prefs.getInt(keyPosition, 0)
 
         if (folderUriString != null) {
             try {
@@ -158,61 +198,224 @@ class MainActivity : AppCompatActivity() {
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
                 loadMusicFromUri(folderUri)
+                withRuntimePermissions {
+                    if (musicList.isNotEmpty()) startAndBindService()
+                }
             } catch (e: Exception) {
-                Toast.makeText(this, "Erreur d'accès au dossier. Veuillez le sélectionner à nouveau.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, R.string.folder_access_error, Toast.LENGTH_LONG).show()
                 prefs.edit { remove(keyFolderURI) }
+                trackTitle.text = getString(R.string.no_folder_selected)
                 setControlsEnabled(false)
-                trackTitle.text = "Aucun dossier sélectionné"
             }
         } else {
-            Toast.makeText(this, "Veuillez sélectionner un dossier pour commencer.", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, R.string.select_folder_first, Toast.LENGTH_LONG).show()
+            trackTitle.text = getString(R.string.no_folder_selected)
             setControlsEnabled(false)
-            trackTitle.text = "Aucun dossier sélectionné"
         }
 
-        // Service de musique
-        val intent = Intent(this, MusicPlayerService::class.java)
-        startForegroundService(intent)
-        bindService(intent, serviceConnection, BIND_AUTO_CREATE)
-
-        // Boutons de contrôle
         playPauseBtn.setOnClickListener {
-            if (!isServiceBound) return@setOnClickListener
-            val player = musicService?.mediaPlayer
-            if (player?.isPlaying == true) {
-                musicService?.pause()
-                playPauseBtn.setImageResource(android.R.drawable.ic_media_play)
-                updatePlaybackState(false)
-            } else {
-                musicService?.resume()
-                playPauseBtn.setImageResource(android.R.drawable.ic_media_pause)
-                updatePlaybackState(true)
-            }
+            if (isServiceBound) musicService?.toggle()
         }
         nextBtn.setOnClickListener {
-            if (!isServiceBound) return@setOnClickListener
-            if (musicList.isNotEmpty()) {
-                val next = (currentPosition + 1) % musicList.size
-                playMusic(next)
-            }
+            if (isServiceBound) musicService?.next()
         }
         prevBtn.setOnClickListener {
-            if (!isServiceBound) return@setOnClickListener
-            if (musicList.isNotEmpty()) {
-                val prev = if (currentPosition - 1 < 0) musicList.size - 1 else currentPosition - 1
-                playMusic(prev)
-            }
+            if (isServiceBound) musicService?.previous()
         }
+
         seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser && isServiceBound) {
-                    musicService?.mediaPlayer?.seekTo(progress)
+            override fun onProgressChanged(
+                seekBar: SeekBar?,
+                progress: Int,
+                fromUser: Boolean
+            ) {
+                if (fromUser) {
                     currentTime.text = formatTime(progress)
                 }
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+
+            override fun onStartTrackingTouch(seekBar: SeekBar?) {
+                isSeeking = true
+            }
+
+            override fun onStopTrackingTouch(seekBar: SeekBar?) {
+                isSeeking = false
+                musicService?.seekTo(seekBar?.progress ?: 0)
+            }
         })
+    }
+
+    private fun withRuntimePermissions(block: () -> Unit) {
+        val requested = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                add(Manifest.permission.BLUETOOTH_CONNECT)
+            }
+        }.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (requested.isEmpty()) {
+            block()
+            return
+        }
+
+        if (permissionRequestInFlight) {
+            pendingAfterPermissions = block
+            return
+        }
+
+        permissionRequestInFlight = true
+        pendingAfterPermissions = block
+        permissionLauncher.launch(requested.toTypedArray())
+    }
+
+    private fun startAndBindService() {
+        if (isServiceBound || serviceRequested) return
+        serviceRequested = true
+
+        val intent = Intent(this, MusicPlayerService::class.java)
+        try {
+            startForegroundService(intent)
+            if (!bindService(intent, serviceConnection, BIND_AUTO_CREATE)) {
+                serviceRequested = false
+                stopService(intent)
+                Toast.makeText(this, R.string.service_start_error, Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            serviceRequested = false
+            Toast.makeText(this, R.string.service_start_error, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun loadMusicFromUri(uri: Uri) {
+        musicList.clear()
+        val pickedDir = DocumentFile.fromTreeUri(this, uri)
+        pickedDir?.listFiles()?.forEach { file ->
+            if (file.isFile) {
+                val name = file.name ?: return@forEach
+                val extension = name.substringAfterLast('.', "").lowercase()
+                if (extension == "mp3" || extension == "wav") {
+                    musicList.add(Music(name, file.uri, file.lastModified()))
+                }
+            }
+        }
+        musicList.sortByDescending { it.lastModified }
+
+        val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
+        val lastMusicUri = prefs.getString(keyLastMusicUri, null)
+        currentPosition = lastMusicUri
+            ?.let { saved -> musicList.indexOfFirst { it.uri.toString() == saved } }
+            ?.takeIf { it >= 0 }
+            ?: 0
+
+        musicAdapter.refresh()
+        if (musicList.isNotEmpty()) {
+            musicRecyclerView.scrollToPosition(currentPosition)
+        } else {
+            resetTrackUi()
+        }
+
+        if (isServiceBound) {
+            musicService?.setPlaylist(musicList, currentPosition, autoPlay = false)
+        }
+        setControlsEnabled(musicList.isNotEmpty() && isServiceBound)
+    }
+
+    private fun attachServiceCallbacks() {
+        musicService?.onTrackChanged = { music ->
+            if (music != null) {
+                trackTitle.text = music.title
+                val durationMs = musicService?.duration() ?: 0
+                seekBar.max = durationMs
+                duration.text = formatTime(durationMs)
+                val positionMs = musicService?.position() ?: 0
+                seekBar.progress = positionMs
+                currentTime.text = formatTime(positionMs)
+                musicAdapter.playingUri = music.uri
+                currentPosition = musicList.indexOfFirst { it.uri == music.uri }
+                    .takeIf { it >= 0 } ?: currentPosition
+            } else {
+                resetTrackUi()
+            }
+            musicAdapter.notifyDataSetChanged()
+        }
+
+        musicService?.onPlaybackStateChanged = { playing ->
+            setPlayPauseIcon(playing)
+            if (playing) {
+                startSeekBarUpdates()
+            } else {
+                stopSeekBarUpdates()
+                musicService?.let {
+                    seekBar.progress = it.position()
+                    currentTime.text = formatTime(it.position())
+                }
+            }
+        }
+
+        musicService?.onPlaybackError = { message ->
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun detachServiceCallbacks() {
+        musicService?.onTrackChanged = null
+        musicService?.onPlaybackStateChanged = null
+        musicService?.onPlaybackError = null
+    }
+
+    private fun syncUiFromService() {
+        val service = musicService ?: return
+        val music = service.currentMusic
+        if (music != null) {
+            trackTitle.text = music.title
+            val durationMs = service.duration()
+            seekBar.max = durationMs
+            duration.text = formatTime(durationMs)
+            val positionMs = service.position()
+            seekBar.progress = positionMs
+            currentTime.text = formatTime(positionMs)
+            musicAdapter.playingUri = music.uri
+            currentPosition = musicList.indexOfFirst { it.uri == music.uri }
+                .takeIf { it >= 0 } ?: currentPosition
+        } else {
+            resetTrackUi()
+        }
+
+        setPlayPauseIcon(service.isPlaying())
+        if (service.isPlaying()) startSeekBarUpdates() else stopSeekBarUpdates()
+        musicAdapter.notifyDataSetChanged()
+    }
+
+    private fun resetTrackUi() {
+        trackTitle.text = getString(
+            if (musicList.isEmpty()) R.string.no_music_found else R.string.no_track_selected
+        )
+        seekBar.max = 0
+        seekBar.progress = 0
+        currentTime.text = formatTime(0)
+        duration.text = formatTime(0)
+        musicAdapter.playingUri = null
+        setPlayPauseIcon(false)
+        musicAdapter.notifyDataSetChanged()
+    }
+
+    private fun setPlayPauseIcon(playing: Boolean) {
+        playPauseBtn.setImageResource(
+            if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow
+        )
+    }
+
+    private fun startSeekBarUpdates() {
+        handler.removeCallbacks(seekBarUpdater)
+        handler.post(seekBarUpdater)
+    }
+
+    private fun stopSeekBarUpdates() {
+        handler.removeCallbacks(seekBarUpdater)
     }
 
     private fun setControlsEnabled(enabled: Boolean) {
@@ -222,119 +425,29 @@ class MainActivity : AppCompatActivity() {
         seekBar.isEnabled = enabled
     }
 
-    @SuppressLint("SetTextI18n", "NotifyDataSetChanged")
-    private fun loadMusicFromUri(uri: Uri) {
-        musicList.clear()
-        val pickedDir = DocumentFile.fromTreeUri(this, uri)
-        pickedDir?.listFiles()?.forEach { file ->
-            if (file.isFile && (file.name?.endsWith(".mp3") == true || file.name?.endsWith(".wav") == true)) {
-                musicList.add(Music(file.name ?: "Unknown", file.uri, file.lastModified()))
-            }
-        }
-        musicList.sortByDescending { it.lastModified }
-
-        // Récupère l'URI de la dernière musique jouée
-        val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
-        val lastMusicUri = prefs.getString(keyLastMusicUri, null)
-        currentPosition = if (lastMusicUri != null) {
-            musicList.indexOfFirst { it.uri.toString() == lastMusicUri }.takeIf { it >= 0 } ?: 0
-        } else 0
-
-        musicAdapter.playingPosition = currentPosition
-        musicAdapter.notifyDataSetChanged()
-        musicRecyclerView.scrollToPosition(currentPosition) // Ajout : scroll automatique
-        if (musicList.isNotEmpty()) {
-            if (currentPosition >= musicList.size) currentPosition = 0
-            // On ne lance pas la musique ici, on attend que le service soit prêt
-        } else {
-            trackTitle.text = "No music found"
-            playPauseBtn.setImageResource(android.R.drawable.ic_media_play)
-            seekBar.progress = 0
-            seekBar.max = 0
-            currentTime.text = formatTime(0)
-            duration.text = formatTime(0)
-        }
+    override fun onStart() {
+        super.onStart()
+        attachServiceCallbacks()
+        syncUiFromService()
     }
 
-    @SuppressLint("NotifyDataSetChanged")
-    private fun playMusic(position: Int, auto: Boolean = false) {
-        if (!isServiceBound) return
-        try {
-            val music = musicList[position]
-            currentPosition = position
-            val prefs = getSharedPreferences(prefsName, MODE_PRIVATE)
-            prefs.edit {
-                putInt(keyPosition, currentPosition)
-                putString(keyLastMusicUri, music.uri.toString()) // Sauvegarde l'URI
-            }
-            musicService?.play(music.uri)
-            trackTitle.text = music.title
-            playPauseBtn.setImageResource(android.R.drawable.ic_media_pause)
-            seekBar.max = musicService?.mediaPlayer?.duration ?: 0
-            duration.text = formatTime(musicService?.mediaPlayer?.duration ?: 0)
-            currentTime.text = formatTime(0)
-            seekBar.progress = 0
-            updateSeekBar()
-            musicAdapter.playingPosition = position
-            musicAdapter.notifyDataSetChanged()
-            mediaSession.setMetadata(
-                MediaMetadataCompat.Builder()
-                    .putString(MediaMetadataCompat.METADATA_KEY_TITLE, music.title)
-                    .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, "Unknown Artist")
-                    .putString(MediaMetadataCompat.METADATA_KEY_ALBUM, "Spoticy")
-                    .putLong(MediaMetadataCompat.METADATA_KEY_DURATION, musicService?.mediaPlayer?.duration?.toLong() ?: 0L)
-                    .build()
-            )
-            updatePlaybackState(true)
-            musicService?.mediaPlayer?.setOnCompletionListener {
-                nextBtn.performClick()
-            }
-        } catch (e: Exception) {
-            Toast.makeText(this, "Erreur lors de la lecture : ${e.message}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun updateSeekBar() {
-        musicService?.mediaPlayer?.let { player ->
-            seekBar.progress = player.currentPosition
-            currentTime.text = formatTime(player.currentPosition)
-            if (player.isPlaying) {
-                handler.postDelayed({ updateSeekBar() }, 1000)
-            }
-        }
-    }
-
-    private fun formatTime(milliseconds: Int): String {
-        val totalSeconds = milliseconds / 1000
-        val minutes = totalSeconds / 60
-        val seconds = totalSeconds % 60
-        return "%02d:%02d".format(minutes, seconds)
-    }
-
-    private fun updatePlaybackState(isPlaying: Boolean) {
-        val state = if (isPlaying) PlaybackStateCompat.STATE_PLAYING else PlaybackStateCompat.STATE_PAUSED
-        val position = musicService?.mediaPlayer?.currentPosition?.toLong() ?: 0L
-        mediaSession.setPlaybackState(
-            PlaybackStateCompat.Builder()
-                .setActions(
-                    PlaybackStateCompat.ACTION_PLAY or
-                    PlaybackStateCompat.ACTION_PAUSE or
-                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS
-                )
-                .setState(state, position, 1.0f)
-                .build()
-        )
+    override fun onStop() {
+        detachServiceCallbacks()
+        stopSeekBarUpdates()
+        super.onStop()
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        detachServiceCallbacks()
         if (isServiceBound) {
-            unbindService(serviceConnection)
+            try {
+                unbindService(serviceConnection)
+            } catch (e: IllegalArgumentException) {
+                // Le service s'est déjà déconnecté.
+            }
             isServiceBound = false
         }
-        musicService?.stop()
         handler.removeCallbacksAndMessages(null)
-        mediaSession.release()
+        super.onDestroy()
     }
 }
