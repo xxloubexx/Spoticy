@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build and publish debug APK
+    name: Build and publish signed APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -52,22 +52,46 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
+      - name: Decode release keystore
+        env:
+          RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$RELEASE_KEYSTORE_BASE64"
+          echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          chmod 600 "$RUNNER_TEMP/release.keystore"
+
       - name: Run unit tests and Android Lint
         run: ./gradlew :app:testDebugUnitTest :app:lintDebug --stacktrace --console=plain
 
-      - name: Assemble debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --console=plain
+      - name: Assemble signed release APK
+        env:
+          RELEASE_KEYSTORE_PATH: ${{ runner.temp }}/release.keystore
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --stacktrace --console=plain
+
+      - name: Verify release signature
+        run: |
+          APKSIGNER="$(find "${ANDROID_SDK_ROOT}/build-tools/36.0.0" -name apksigner -type f | head -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk
 
       - name: Rename APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk "Spoticy-${GITHUB_REF_NAME}-debug.apk"
+        run: cp app/build/outputs/apk/release/app-release.apk "Spoticy-${GITHUB_REF_NAME}.apk"
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v3
         with:
           name: Spoticy ${{ github.ref_name }}
           body: |
-            APK de débogage généré automatiquement pour ${{ github.ref_name }}.
-            Cet APK est signé avec la clé de debug Android ; il n'est pas destiné au Play Store.
-          files: Spoticy-${{ github.ref_name }}-debug.apk
+            APK Android signé avec la clé de release du projet pour ${{ github.ref_name }}.
+            Cette release est destinée à l'installation directe ou à la distribution hors Play Store.
+            Si une version debug (v7.0) est déjà installée, désinstallez-la avant d'installer cet APK : les signatures sont différentes.
+          files: Spoticy-${{ github.ref_name }}.apk
           generate_release_notes: true
           fail_on_unmatched_files: true
+
+      - name: Remove temporary keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.keystore"
