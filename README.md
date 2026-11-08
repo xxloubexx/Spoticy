@@ -23,9 +23,9 @@ Version actuelle : **7.0** (`versionCode 12`).
 
 ## Prérequis
 
-- **Android Studio** récent, compatible avec Android Gradle Plugin 8.10.1 (Gradle 8.11.1 est fourni par le wrapper).
+- **Android Studio** récent, compatible avec Android Gradle Plugin 9.5.1 (Gradle 9.8.2 est fourni par le wrapper).
 - **JDK 17 ou supérieur** (le projet cible Java 11).
-- **Android SDK Platform 35**.
+- **Android SDK Platform 36** (`compileSdk 36`, `targetSdk 35`).
 - Un appareil ou un émulateur sous **Android 8.0 (API 26) minimum**.
 
 ## Compilation
@@ -59,7 +59,7 @@ En ligne de commande, Gradle doit connaître l'emplacement du SDK Android : déf
 .\gradlew.bat :app:lintDebug
 ```
 
-Les tests couvrent le formatage des durées (`formatTime`). Android Lint doit rester à **0 erreur** ; les avertissements restants sont informatifs (versions de dépendances plus récentes, version de Gradle et cible Android 35). Ces vérifications sont exécutées automatiquement par la CI.
+Les tests couvrent le formatage des durées (`formatTime`). Android Lint doit rester à **0 erreur** ; les avertissements restants sont informatifs (versions de dépendances et de Gradle disponibles, cible Android). Ces vérifications sont exécutées automatiquement par la CI.
 
 ## CI/CD
 
@@ -157,7 +157,7 @@ Spoticy ne dispose d'aucune permission réseau et n'envoie aucune donnée. L'app
 
 ## Historique
 
-- **7.0** (08/11/2026) — version poussée sur GitHub avec CI/CD, tests unitaires, Lint et build automatique.
+- **7.0** (08/11/2026) — version poussée sur GitHub avec CI/CD, dépendances modernisées (AGP 9.5.1, Gradle 9.8.2, SDK 36), tests unitaires, Lint et build automatique.
 - **6.4** (08/11/2026) — notification de lecture persistante, non balayable tant que le service tourne.
 - **6.3** (08/11/2026) — arrêt complet de la lecture au balayage de la tâche, reprise du dernier morceau depuis le début au lancement, icône de lancement en note de musique.
 - **6.2** (08/11/2026) — lecture en arrière-plan, file de lecture et `MediaSession` dans le service, commandes de notification, permissions runtime, `minSdk` abaissé à 26, thème sombre cohérent, interface FR/EN, tests unitaires et licence MIT.
