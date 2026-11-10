@@ -5,7 +5,6 @@
     <string name="no_track_selected">Aucun morceau sélectionné</string>
     <string name="no_folder_selected">Aucun dossier sélectionné</string>
     <string name="no_music_found">Aucun morceau trouvé</string>
-    <string name="select_track">Sélectionnez un morceau</string>
     <string name="previous">Précédent</string>
     <string name="play_pause">Lecture/Pause</string>
     <string name="next">Suivant</string>

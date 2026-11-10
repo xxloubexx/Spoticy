@@ -92,7 +92,11 @@ class MusicPlayerService : Service() {
                 override fun onSkipToNext() = next()
                 override fun onSkipToPrevious() = previous()
                 override fun onSeekTo(pos: Long) = seekTo(pos.toInt())
-                override fun onStop() = stop()
+                // Un « stop » venant du système (croix du lecteur média, notification
+                // balayée sur Android 14+) doit seulement mettre en pause : sinon le
+                // morceau courant était oublié et la barre affichait « Aucun morceau
+                // sélectionné » alors que la lecture était simplement en pause.
+                override fun onStop() = pause()
             })
             setSessionActivity(contentPendingIntent())
             isActive = true
@@ -147,7 +151,7 @@ class MusicPlayerService : Service() {
             ACTION_CMD_NEXT -> next()
             ACTION_CMD_PREV -> previous()
             ACTION_CMD_STOP -> stop()
-            ACTION_CMD_RESTORE_NOTIFICATION -> ensureForeground()
+            ACTION_CMD_RESTORE_NOTIFICATION -> restoreNotification()
         }
         return START_NOT_STICKY
     }
@@ -179,14 +183,32 @@ class MusicPlayerService : Service() {
             }
         }
 
-        currentIndex = startIndex.coerceIn(0, playlist.lastIndex)
+        val safeIndex = startIndex.coerceIn(0, playlist.lastIndex)
         if (autoPlay) {
-            playIndex(currentIndex)
+            playIndex(safeIndex)
         } else {
-            clearPlayback(keepPlaylist = true)
-            mediaSession.isActive = true
-            updateNotification(false)
+            selectIndex(safeIndex)
         }
+    }
+
+    /**
+     * Sélectionne un morceau sans le lancer : la barre de lecture et la notification
+     * l'affichent en pause au lieu de retomber sur « Aucun morceau sélectionné ».
+     */
+    private fun selectIndex(index: Int) {
+        if (playlist.isEmpty()) return
+
+        val safeIndex = index.coerceIn(0, playlist.lastIndex)
+        currentIndex = safeIndex
+        val music = playlist[safeIndex]
+        currentMusic = music
+        releasePlayer()
+        mediaSession.isActive = true
+        savePlaybackState(music)
+        updateMediaSession()
+        ensureForeground()
+        onTrackChanged?.invoke(music)
+        onPlaybackStateChanged?.invoke(false)
     }
 
     fun playIndex(index: Int) {
@@ -198,12 +220,7 @@ class MusicPlayerService : Service() {
         currentMusic = music
         mediaSession.isActive = true
 
-        try {
-            mediaPlayer?.release()
-        } catch (e: Exception) {
-            // Déjà libéré.
-        }
-        mediaPlayer = null
+        releasePlayer()
 
         val player = try {
             MediaPlayer().apply {
@@ -347,6 +364,15 @@ class MusicPlayerService : Service() {
         false
     }
 
+    private fun releasePlayer() {
+        try {
+            mediaPlayer?.release()
+        } catch (e: Exception) {
+            // Le lecteur était déjà libéré.
+        }
+        mediaPlayer = null
+    }
+
     fun stop() {
         clearPlayback(keepPlaylist = true)
         abandonAudioFocus()
@@ -357,12 +383,7 @@ class MusicPlayerService : Service() {
     }
 
     private fun clearPlayback(keepPlaylist: Boolean = false) {
-        try {
-            mediaPlayer?.release()
-        } catch (e: Exception) {
-            // Rien à faire : le lecteur est déjà libéré.
-        }
-        mediaPlayer = null
+        releasePlayer()
         currentMusic = null
         currentIndex = -1
         if (!keepPlaylist) {
@@ -392,7 +413,9 @@ class MusicPlayerService : Service() {
 
         val state = when {
             isPlaying() -> PlaybackStateCompat.STATE_PLAYING
-            mediaPlayer != null -> PlaybackStateCompat.STATE_PAUSED
+            // Un morceau sélectionné reste « en pause » même si aucun lecteur
+            // n'est instancié (rotation, retour dans l'application, arrêt système).
+            currentMusic != null -> PlaybackStateCompat.STATE_PAUSED
             else -> PlaybackStateCompat.STATE_NONE
         }
         mediaSession.setPlaybackState(
@@ -431,12 +454,33 @@ class MusicPlayerService : Service() {
         manager.notify(NOTIFICATION_ID, buildNotification(isPlaying))
     }
 
+    /**
+     * Depuis Android 14, le système laisse l'utilisateur balayer la notification
+     * d'un service au premier plan. On la republie donc immédiatement pour qu'elle
+     * reste affichée tant que le service de lecture tourne.
+     */
+    private fun restoreNotification() {
+        if (!isRunning) return
+        try {
+            ensureForeground()
+        } catch (e: Exception) {
+            try {
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIFICATION_ID, buildNotification(isPlaying()))
+            } catch (ignored: Exception) {
+                // Rien de plus à tenter : le service sera arrêté proprement.
+            }
+        }
+    }
+
     private fun buildNotification(playing: Boolean): Notification {
         val title = currentMusic?.title ?: getString(R.string.app_name)
         val text = when {
             currentMusic == null -> getString(R.string.notification_ready)
             playing -> getString(R.string.notification_playing)
-            else -> getString(R.string.notification_paused)
+            mediaPlayer != null -> getString(R.string.notification_paused)
+            // Morceau sélectionné mais pas encore lancé.
+            else -> getString(R.string.notification_ready)
         }
         val toggleIcon = if (playing) R.drawable.ic_pause else R.drawable.ic_play_arrow
         val toggleTitle = getString(
@@ -454,6 +498,8 @@ class MusicPlayerService : Service() {
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
             .setOngoing(true)
+            .setAutoCancel(false)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .addAction(
                 R.drawable.ic_skip_previous,
                 getString(R.string.notification_previous),
@@ -526,12 +572,7 @@ class MusicPlayerService : Service() {
 
     override fun onDestroy() {
         isRunning = false
-        try {
-            mediaPlayer?.release()
-        } catch (e: Exception) {
-            // Déjà libéré.
-        }
-        mediaPlayer = null
+        releasePlayer()
         abandonAudioFocus()
         mediaSession.release()
         super.onDestroy()

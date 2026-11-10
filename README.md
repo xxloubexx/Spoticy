@@ -6,7 +6,7 @@
 
 [![Android CI](https://github.com/xxloubexx/Spoticy/actions/workflows/android-ci.yml/badge.svg?branch=main)](https://github.com/xxloubexx/Spoticy/actions/workflows/android-ci.yml)
 
-Version actuelle : **7.1** (`versionCode 13`).
+Version actuelle : **7.2** (`versionCode 14`).
 
 ## Fonctionnalités
 
@@ -14,8 +14,9 @@ Version actuelle : **7.1** (`versionCode 13`).
 - Liste des fichiers `.mp3` et `.wav` du dossier (extensions insensibles à la casse), triés du plus récent au plus ancien.
 - Recherche par nom de fichier, avec surlignage fiable du morceau en cours même quand la liste est filtrée.
 - Lecture, pause, morceau suivant / précédent et déplacement dans la piste.
+- Le morceau sélectionné reste affiché dans la barre de lecture même en pause, après une rotation ou un retour dans l'application : elle n'affiche « Aucun morceau sélectionné » que lorsqu'il n'y a réellement plus rien à jouer.
 - Lecture en arrière-plan : la musique continue quand l'activité est détruite (rotation, bouton Retour), mais un balayage des applications récentes arrête complètement la lecture.
-- Notification de lecture avec contrôles précédent / lecture-pause / suivant / arrêt, intégration à l'écran verrouillé via `MediaSession` (si la permission de notifications est accordée), et affichage permanent non balayable tant que le service de lecture tourne.
+- Notification de lecture avec contrôles précédent / lecture-pause / suivant / arrêt, intégration à l'écran verrouillé via `MediaSession` (si la permission de notifications est accordée), et affichage permanent tant que le service de lecture tourne : elle est republiée immédiatement si le système la retire (comportement autorisé depuis Android 14). Le bouton **Arrêter** reste le moyen prévu de l'enlever.
 - Gestion du focus audio : pause lors d'un appel ou d'une autre application, reprise ensuite.
 - Relance le dernier morceau écouté depuis le début au prochain lancement.
 - Pause / reprise automatique à la connexion ou déconnexion d'un périphérique audio Bluetooth (A2DP ou casque), si la permission Bluetooth est accordée.
@@ -105,8 +106,9 @@ app/src/main/java/com/spoticy/app/
 2. `loadMusicFromUri()` parcourt le dossier avec `DocumentFile` et remplit la liste.
 3. À la connexion au service, l'activité transmet la liste au service ; le service possède la file de lecture et le morceau courant.
 4. `MusicPlayerService.playIndex()` demande le focus audio, crée un `MediaPlayer`, met à jour la `MediaSession` et la notification.
-5. À la fin du morceau, le service passe au suivant sans dépendre de l'activité.
-6. `BluetoothReceiver` envoie des commandes play/pause au service lors des événements A2DP ou casque.
+5. Sans lecture (démarrage, rotation, retour au premier plan), `selectIndex()` garde le morceau choisi comme morceau courant sans créer de `MediaPlayer` : la barre de lecture et la notification l'affichent en pause, et le bouton lecture le relance. Un « stop » envoyé par le système (croix du lecteur média, notification retirée) est traité comme une pause pour ne jamais perdre la sélection.
+6. À la fin du morceau, le service passe au suivant sans dépendre de l'activité.
+7. `BluetoothReceiver` envoie des commandes play/pause au service lors des événements A2DP ou casque.
 
 L'activité ne possède plus la `MediaSession` : elle survit donc à la destruction de l'écran et continue de piloter la lecture depuis la notification ou l'écran verrouillé.
 
@@ -125,6 +127,7 @@ L'activité ne possède plus la `MediaSession` : elle survit donc à la destruct
 - Pas encore de file de lecture éditable, de répétition, de lecture aléatoire ni de tri configurable.
 - Le scan du dossier s'exécute sur le thread principal : un dossier très volumineux peut bloquer brièvement l'interface.
 - La lecture continue en arrière-plan (hors balayage de la tâche), mais l'application n'utilise pas encore Media3 ; les API `MediaSessionCompat` sont dépréciées et émettent des avertissements de compilation.
+- Depuis Android 14, le système autorise l'utilisateur à balayer la notification d'un service au premier plan : l'application ne peut pas l'empêcher, elle la republie aussitôt. Un `CallStyle` serait la seule exemption système, mais il ne correspond pas à un lecteur de musique.
 - La reprise Bluetooth se déclenche pour toute connexion A2DP ou casque, sans distinction du périphérique.
 - Les tests automatisés restent limités au formatage des durées ; il n'y a pas encore de tests instrumentés.
 
@@ -161,6 +164,7 @@ La release Android est signée avec un keystore dédié, conservé hors du dép�
 
 ## Historique
 
+- **7.2** (10/11/2026) — la barre de lecture conserve le morceau sélectionné en pause (rotation, retour dans l'app, arrêt envoyé par le système) ; la notification est republiée immédiatement si elle est balayée, et le « stop » du lecteur média système ne vide plus la sélection.
 - **7.1** (08/11/2026) — première release signée avec une clé de release dédiée ; APK release publié par le workflow.
 - **7.0** (08/11/2026) — version poussée sur GitHub avec CI/CD, dépendances modernisées (AGP 9.5.1, Gradle 9.8.2, SDK 36), tests unitaires, Lint et build automatique.
 - **6.4** (08/11/2026) — notification de lecture persistante, non balayable tant que le service tourne.

@@ -125,9 +125,6 @@ class MainActivity : AppCompatActivity() {
             }
 
             loadMusicFromUri(uri)
-            trackTitle.text = getString(
-                if (musicList.isEmpty()) R.string.no_music_found else R.string.select_track
-            )
 
             withRuntimePermissions {
                 if (musicList.isNotEmpty()) startAndBindService()
@@ -316,6 +313,10 @@ class MainActivity : AppCompatActivity() {
         musicAdapter.refresh()
         if (musicList.isNotEmpty()) {
             musicRecyclerView.scrollToPosition(currentPosition)
+            // Affiche tout de suite le morceau sélectionné : on ne laisse pas la
+            // barre de lecture sur « Aucun morceau sélectionné » le temps que le
+            // service se connecte.
+            trackTitle.text = musicList[currentPosition].title
         } else {
             resetTrackUi()
         }
